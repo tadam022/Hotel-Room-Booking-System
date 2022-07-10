@@ -1,0 +1,355 @@
+CREATE TABLE IF NOT EXISTS Locations(
+	
+	Location_ID SERIAL,
+	Country VARCHAR(100) NOT NULL,
+	City VARCHAR(100),
+	State_or_Province VARCHAR(100),
+	ZIP VARCHAR(10),
+	Address_Line1 VARCHAR(200),
+	Address_Line2 VARCHAR(50),
+	PRIMARY KEY(Location_ID)
+	
+);
+
+CREATE TABLE IF NOT EXISTS Hotel_Chain(
+	Hotel_Chain_ID SERIAL,
+	Name VARCHAR(120) UNIQUE NOT NULL,
+	Number_of_Hotels INTEGER DEFAULT 0,
+	Email VARCHAR(254) NOT NULL,
+	UNIQUE(Email),
+	Phone_Number VARCHAR(80) NOT NULL,
+	Location_ID INTEGER,
+	UNIQUE(Phone_Number),
+	PRIMARY KEY (Hotel_Chain_ID),
+	FOREIGN KEY(Location_ID) REFERENCES Locations(Location_ID)
+	ON DELETE CASCADE
+
+);
+
+CREATE TABLE IF NOT EXISTS Hotels(
+	Hotel_ID SERIAL,
+	Hotel_Chain_ID INTEGER,
+	Name VARCHAR(120) UNIQUE NOT NULL,
+	Number_of_Rooms INTEGER DEFAULT 0,
+	Email VARCHAR(254) NOT NULL,
+	UNIQUE(Email),
+	Phone_Number VARCHAR(80) NOT NULL,
+	Location_ID INTEGER,
+	Star_Category INTEGER,
+	UNIQUE(Phone_Number),
+	PRIMARY KEY(Hotel_ID),
+	FOREIGN KEY(Location_ID) REFERENCES Locations(Location_ID)
+	ON DELETE CASCADE,
+	FOREIGN KEY(Hotel_Chain_ID) REFERENCES Hotel_Chain(Hotel_Chain_ID)
+	ON DELETE CASCADE,
+	CHECK (Star_Category >= 1 AND Star_Category <= 5)	
+	
+);
+
+
+CREATE TABLE IF NOT EXISTS Room (
+	Room_ID SERIAL,
+	Hotel_ID INTEGER,
+	Room_Number INTEGER NOT NULL,
+	Capacity INTEGER NOT NULL,
+	Price INTEGER NOT NULL,
+	Mountain_View BOOL DEFAULT False,
+	Sea_View BOOL DEFAULT False,
+	Availability BOOL DEFAULT TRUE,
+	Extendable BOOL DEFAULT False,
+	Type VARCHAR NOT NULL,
+	PRIMARY KEY(Room_ID),
+	FOREIGN KEY(Hotel_ID) REFERENCES Hotels(Hotel_ID)
+	ON DELETE CASCADE,
+	CHECK (Price > 0 AND Room_Number > 0  AND Capacity > 0),
+	CHECK (lower(Type) = 'single' OR lower(Type) = 'double' OR lower(Type) = 'triple' OR lower(Type) = 'quad')
+			
+);
+
+
+CREATE TABLE IF NOT EXISTS Amenities (
+	Amenities_ID SERIAL,
+	Amenities_Name VARCHAR(80) NOT NULL,
+	PRIMARY KEY(Amenities_ID)
+	
+);
+
+
+CREATE TABLE IF NOT EXISTS Has_Room_Amenities (
+	Amenities_ID INTEGER NOT NULL,
+	Room_ID INTEGER NOT NULL,
+	PRIMARY KEY(Amenities_ID, Room_ID),
+	FOREIGN KEY(Amenities_ID) REFERENCES Amenities(Amenities_ID),
+	FOREIGN KEY(Room_ID) REFERENCES Room(Room_ID)
+	ON DELETE CASCADE
+
+
+);
+
+
+CREATE TABLE IF NOT EXISTS Person (
+
+	User_ID SERIAL,
+	First_Name VARCHAR(80),
+	Last_Name VARCHAR(80),
+	SIN VARCHAR(15),
+	Email VARCHAR(254),
+	UNIQUE(Email),
+	UNIQUE(SIN),
+	Phone_Number VARCHAR(80) NOT NULL,
+	Location_ID INTEGER,
+	Password VARCHAR(32) NOT NULL,
+	UNIQUE(Phone_Number),
+  	PRIMARY KEY(User_ID),
+	FOREIGN KEY(Location_ID) REFERENCES Locations(Location_ID)
+	ON DELETE CASCADE
+);
+
+
+CREATE TABLE IF NOT EXISTS Customer (
+	Customer_ID SERIAL,
+	User_ID INTEGER,
+	Registration_Date VARCHAR(10),	
+  	PRIMARY KEY(Customer_ID),
+	FOREIGN KEY(User_ID) REFERENCES Person(User_ID)
+	ON DELETE CASCADE
+	
+);
+
+CREATE TABLE IF NOT EXISTS Employee (
+	Employee_ID SERIAL,
+	User_ID INTEGER,
+	Hotel_ID INTEGER,
+	Salary DECIMAL NOT NULL,
+	Position VARCHAR(11) DEFAULT 'Concierge',
+	CHECK (lower(Position) = 'concierge' OR lower(Position) = 'manager' OR lower(Position) = 'housekeeper' OR lower(Position) = 'frontdesk'),
+  	PRIMARY KEY(Employee_ID),
+	FOREIGN KEY(User_ID) REFERENCES Person(User_ID)
+	ON DELETE CASCADE,
+	FOREIGN KEY(Hotel_ID) REFERENCES Hotels(Hotel_ID)
+	ON DELETE CASCADE
+
+
+);
+
+
+CREATE TABLE IF NOT EXISTS Bookings (
+	Booking_ID SERIAL,
+	Customer_ID INTEGER,
+	Room_ID INTEGER,
+	Archived BOOL DEFAULT False,
+	Start_Date VARCHAR(10) NOT NULL,
+	End_Date VARCHAR(10) NOT NULL,
+	Number_of_Occupants INTEGER DEFAULT 1,
+  	PRIMARY KEY(Booking_ID),
+	FOREIGN KEY(Room_ID) REFERENCES Room(Room_ID),
+	FOREIGN KEY(Customer_ID) REFERENCES Customer(Customer_ID),
+	CHECK (TO_DATE(end_date,'MMDDYYYY') >= TO_DATE(start_date,'MMDDYYYY'))
+
+
+
+);
+
+CREATE TABLE IF NOT EXISTS Rentings (
+	
+	Renting_ID SERIAL,
+    	Booking_ID INTEGER DEFAULT NULL,
+  	Customer_ID INTEGER,
+   	Room_ID INTEGER,
+	Archived BOOL DEFAULT False,
+	Start_Date VARCHAR(10) DEFAULT NULL,
+	End_Date VARCHAR(10) DEFAULT NULL,
+	Number_of_Occupants INTEGER DEFAULT 1,
+  	PRIMARY KEY(Renting_ID),
+	FOREIGN KEY(Room_ID) REFERENCES Room(Room_ID),
+	FOREIGN KEY(Customer_ID) REFERENCES Customer(Customer_ID),
+  	FOREIGN KEY(Booking_ID) REFERENCES Bookings (Booking_ID),
+	CHECK (TO_DATE(end_date,'MMDDYYYY') >= TO_DATE(start_date,'MMDDYYYY'))
+	
+
+);
+
+CREATE TABLE IF NOT EXISTS Payments (
+
+	Payment_ID SERIAL,
+	Amount INTEGER NOT NULL,
+	Renting_ID INTEGER,
+	FOREIGN KEY(Renting_ID) REFERENCES Rentings(Renting_ID)
+
+);
+
+
+CREATE OR REPLACE FUNCTION roomdelete() RETURNS TRIGGER AS
+'
+BEGIN
+UPDATE bookings
+SET room_id = NULL, archived = True WHERE room_id = OLD.room_id;
+
+UPDATE rentings
+SET room_id = NULL, archived = True WHERE room_id = OLD.room_id;   
+                                  
+RETURN OLD;
+END;
+'
+LANGUAGE plpgsql;                  
+                                            
+
+CREATE TRIGGER delete_room
+BEFORE DELETE ON room
+FOR EACH ROW
+EXECUTE PROCEDURE roomdelete();    
+
+--Not needed
+CREATE OR REPLACE FUNCTION persondelete() RETURNS TRIGGER AS
+'
+BEGIN
+
+DELETE FROM locations WHERE location_id = OLD.location_ID;    
+
+RETURN OLD;
+END;
+'
+LANGUAGE plpgsql;     
+--Not needed
+CREATE TRIGGER delete_person
+AFTER DELETE ON person
+FOR EACH ROW
+EXECUTE PROCEDURE persondelete(); 
+
+
+CREATE OR REPLACE FUNCTION employeedelete() RETURNS TRIGGER AS
+'
+BEGIN
+
+DELETE FROM PERSON WHERE user_id = OLD.user_ID;    
+
+RETURN OLD;
+END;
+'
+LANGUAGE plpgsql;                  
+                                            
+
+CREATE TRIGGER delete_employee
+AFTER DELETE ON employee
+FOR EACH ROW
+EXECUTE PROCEDURE employeedelete(); 
+
+
+
+
+CREATE OR REPLACE FUNCTION customerdelete() RETURNS TRIGGER AS
+'
+BEGIN
+
+UPDATE bookings
+SET customer_id = NULL, active = False WHERE customer_id  = OLD.customer_id ;
+
+UPDATE rentings
+SET customer_id = NULL, active = False WHERE customer_id = OLD.customer_id;        
+
+RETURN OLD;
+END;
+'
+LANGUAGE plpgsql;                  
+                                            
+
+CREATE TRIGGER delete_customer
+BEFORE DELETE ON customer
+FOR EACH ROW
+EXECUTE PROCEDURE customerdelete(); 
+
+
+
+
+CREATE OR REPLACE FUNCTION customerdelete2() RETURNS TRIGGER AS
+'
+BEGIN
+DELETE FROM PERSON WHERE user_id = OLD.user_ID;                                                               
+RETURN OLD;
+END;
+'
+LANGUAGE plpgsql;  
+
+CREATE TRIGGER delete_customer2
+AFTER DELETE ON customer
+FOR EACH ROW
+EXECUTE PROCEDURE customerdelete2(); 
+
+
+
+
+CREATE OR REPLACE FUNCTION updateNumberofHotels() RETURNS TRIGGER AS
+'
+BEGIN
+UPDATE Hotel_Chain
+SET Number_of_Hotels = c.count FROM (SELECT h.Hotel_Chain_ID, COUNT(*) AS count FROM Hotel_Chain h, Hotels a WHERE h.Hotel_Chain_ID = a.Hotel_Chain_ID GROUP BY 
+h.Hotel_Chain_ID) c WHERE Hotel_Chain.Hotel_Chain_ID = c.Hotel_Chain_ID;
+RETURN NEW;
+END;
+'
+LANGUAGE plpgsql;
+
+CREATE TRIGGER NumberofHotels AFTER INSERT ON Hotels
+FOR EACH STATEMENT EXECUTE PROCEDURE updateNumberofHotels();
+
+CREATE TRIGGER NumberofHotelsDelete AFTER DELETE ON Hotels
+FOR EACH STATEMENT EXECUTE PROCEDURE updateNumberofHotels();
+
+
+CREATE OR REPLACE FUNCTION hotellocationdelete() RETURNS TRIGGER AS
+'
+BEGIN
+
+DELETE FROM locations WHERE location_id = OLD.location_ID;    
+
+RETURN OLD;
+END;
+'
+LANGUAGE plpgsql;                  
+                                            
+
+CREATE TRIGGER delete_hotel_location
+AFTER DELETE ON hotels
+FOR EACH ROW
+EXECUTE PROCEDURE hotellocationdelete(); 
+
+
+
+CREATE OR REPLACE FUNCTION hotelchainlocationdelete() RETURNS TRIGGER AS
+'
+BEGIN
+
+DELETE FROM locations WHERE location_id = OLD.location_ID;    
+
+RETURN OLD;
+END;
+'
+LANGUAGE plpgsql;                  
+                                            
+
+CREATE TRIGGER delete_hotel_chain_location
+AFTER DELETE ON hotel_chain
+FOR EACH ROW
+EXECUTE PROCEDURE hotelchainlocationdelete(); 
+
+
+
+CREATE OR REPLACE FUNCTION updateNumberofRooms() RETURNS TRIGGER AS
+'
+BEGIN
+UPDATE Hotels
+SET Number_of_Rooms = c.count FROM (SELECT h.Hotel_ID, COUNT(*) AS count FROM Hotels h, Room r WHERE h.Hotel_ID = r.Hotel_ID GROUP BY h.Hotel_ID) c WHERE 
+Hotels.Hotel_ID = c.Hotel_ID;
+RETURN NEW;
+END;
+'
+LANGUAGE plpgsql;
+
+CREATE TRIGGER NumberofRooms AFTER INSERT ON Room
+FOR EACH STATEMENT EXECUTE PROCEDURE updateNumberofRooms();
+
+CREATE TRIGGER NumberofRoomsDelete AFTER DELETE ON Room
+FOR EACH STATEMENT EXECUTE PROCEDURE updateNumberofRooms();
+
+
+--ALTER SEQUENCE customer_idseq RESTART WITH 25;

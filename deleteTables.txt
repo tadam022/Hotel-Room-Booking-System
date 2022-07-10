@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS amenities, bookings, customer, employee, has_room_amenities, hotel_chain, hotels, locations, payments, person, rentings, room;
+DROP TRIGGER IF EXISTS NumberofHotels ON Hotels;
+DROP TRIGGER IF EXISTS NumberofHotelsDelete ON HOTELS;
+DROP TRIGGER IF EXISTS NumberofRooms ON Room;
+DROP TRIGGER IF EXISTS NumberofRoomsDelete ON Room;
